@@ -7,6 +7,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -28,13 +32,21 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install test tools
-        run: python -m pip install "hypothesis>=6.100" "ruff==0.17.4"
+        run: python -m pip install "hypothesis>=6.100" "ruff==0.17.4" "coverage>=7.6"
       - name: Lint and formatting
         run: |
           ruff check .
           ruff format --check .
       - name: Run simulation, CLI, and pseudo-terminal tests
-        run: python -m unittest discover -s tests -v
+        run: |
+          python -m coverage run --branch --source terminal_cells -m unittest discover -s tests -v
+          python -m coverage report
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.14'
+        with:
+          name: coverage
+          path: .coverage
+          include-hidden-files: true
       - name: Install package build tools
         run: python -m pip install build "setuptools>=77" wheel
       - name: Build a wheel on this platform
@@ -63,6 +75,12 @@ jobs:
       - run: python -m twine check --strict dist/*.whl dist/*.tar.gz
       - name: Test source archive and isolated installed wheels
         run: python tools/check_dist.py
+      - name: Generate the release manifest
+        run: python tools/release.py manifest --commit "$GITHUB_SHA"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: release-manifest
+          path: release-manifest.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: distributions

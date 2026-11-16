@@ -20,3 +20,8 @@ debian/files
 debian/*.debhelper
 debian/*.substvars
 debian/terminal-cells/
+release-manifest.json
+release-assets/
+release-notes.md
+release-preparation.patch
+endurance.json

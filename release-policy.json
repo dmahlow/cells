@@ -1,0 +1,7 @@
+{
+  "repository": "kborer/cells",
+  "distribution": "terminal-cells",
+  "ppa": "bogobogosort/cells",
+  "ppa_revision": "1ppa1",
+  "ubuntu": {"24.04": "noble", "26.04": "resolute"}
+}

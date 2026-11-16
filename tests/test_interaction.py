@@ -87,15 +87,17 @@ class InteractionTests(unittest.TestCase):
         import importlib
 
         cli = importlib.import_module("terminal_cells.cli")
-        backend = MouseBackend()
-        with (
-            patch.object(cli, "load_curses", return_value=backend),
-            patch.object(cli, "_session", side_effect=KeyboardInterrupt),
-        ):
-            with self.assertRaises(KeyboardInterrupt):
-                cli.run(None, parser().parse_args(["--interactive"]))
-        self.assertEqual(backend.masks[-1], 17)
-        self.assertEqual(backend.intervals[-1], 200)
+        for failure in (KeyboardInterrupt, RuntimeError):
+            with self.subTest(failure=failure):
+                backend = MouseBackend()
+                with (
+                    patch.object(cli, "load_curses", return_value=backend),
+                    patch.object(cli, "_session", side_effect=failure),
+                ):
+                    with self.assertRaises(failure):
+                        cli.run(None, parser().parse_args(["--interactive"]))
+                self.assertEqual(backend.masks[-1], 17)
+                self.assertEqual(backend.intervals[-1], 200)
 
     def test_hit_testing_tracks_visible_layers_and_avoids_distant_entities(self):
         world = self.world()

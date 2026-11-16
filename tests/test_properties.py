@@ -2,6 +2,7 @@
 
 import pickle
 import math
+import os
 import unittest
 
 from terminal_cells import World, render
@@ -58,6 +59,11 @@ else:
             assert world.rng.getstate() == self.twin.rng.getstate()
             assert world.bacteria == self.twin.bacteria
             assert world.cells == self.twin.cells
+            for name in ("phages", "red_cells", "debris", "hyphae", "nutrients", "spent_capsids"):
+                assert getattr(world, name) == getattr(self.twin, name)
+            from tools.endurance import check_world
+
+            check_world(world)
             assert len(world.bacteria) <= 90
             assert len(world.cells) <= 8
             for entity in [
@@ -72,4 +78,8 @@ else:
             assert pickle.dumps(world) == before
 
     TestSlideSequences = SlideMachine.TestCase
-    TestSlideSequences.settings = settings(max_examples=15, stateful_step_count=12, deadline=None)
+    TestSlideSequences.settings = settings(
+        max_examples=100 if os.environ.get("CELLS_EXTENDED_TESTS") else 15,
+        stateful_step_count=40 if os.environ.get("CELLS_EXTENDED_TESTS") else 12,
+        deadline=None,
+    )

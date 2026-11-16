@@ -3,7 +3,9 @@ set -eu
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 cd "$work"
-test "$(cells --version)" = 'cells 0.1.0'
+upstream=$(dpkg-query -W -f='${Version}' terminal-cells)
+upstream=${upstream%%-*}
+test "$(cells --version)" = "cells $upstream"
 cells --snapshot --seed 42 --size 80x24 > snapshot
 python3 - <<'PY'
 from pathlib import Path

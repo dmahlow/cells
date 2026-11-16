@@ -28,8 +28,39 @@ def run(command, cwd: Path, env=None) -> str:
     return result.stdout
 
 
+def validate_wheel_members(archive):
+    names = archive.namelist()
+    if len(names) != len(set(names)) or len(names) > 10000:
+        raise ValueError("Duplicate or excessive wheel members")
+    for info in archive.infolist():
+        name = info.filename
+        parts = PurePosixPath(name)
+        if (
+            parts.is_absolute()
+            or ".." in parts.parts
+            or "\\" in name
+            or any(ord(c) < 32 for c in name)
+            or info.file_size > 100 * 1024 * 1024
+        ):
+            raise ValueError("Unsafe wheel member")
+        top = parts.parts[0] if parts.parts else ""
+        allowed = (
+            top in ("cells.py", "terminal_cells")
+            or (top.startswith("terminal_cells-") and top.endswith(".dist-info"))
+            or (
+                top.startswith("terminal_cells-")
+                and name.endswith(".data/data/share/man/man1/cells.1")
+            )
+        )
+        if not allowed or name.endswith(".pth"):
+            raise ValueError("Unexpected wheel payload")
+    if sum(info.file_size for info in archive.infolist()) > 256 * 1024 * 1024:
+        raise ValueError("Excessive wheel size")
+
+
 def wheel_metadata(path: Path):
     with zipfile.ZipFile(path) as archive:
+        validate_wheel_members(archive)
         names = archive.namelist()
         metadata_files = [n for n in names if n.endswith(".dist-info/METADATA")]
         if len(metadata_files) != 1 or "cells.py" not in names:
@@ -86,20 +117,35 @@ def extract_source(path: Path, destination: Path) -> Path:
     with tarfile.open(path, "r:gz") as archive:
         members = archive.getmembers()
         roots = set()
+        seen = set()
+        total = 0
+        if len(members) > 10000:
+            raise ValueError("Excessive source members")
         for member in members:
             parts = PurePosixPath(member.name)
             if (
-                parts.is_absolute()
+                not parts.parts
+                or "\\" in member.name
+                or any(ord(c) < 32 for c in member.name)
+                or parts.as_posix() in seen
+                or member.size > 100 * 1024 * 1024
+                or parts.is_absolute()
                 or ".." in parts.parts
                 or not (member.isfile() or member.isdir())
             ):
                 raise ValueError(f"Unexpected source archive member: {member.name}")
+            seen.add(parts.as_posix())
+            total += member.size
+            if total > 256 * 1024 * 1024:
+                raise ValueError("Excessive source size")
             roots.add(parts.parts[0])
         if len(roots) != 1:
             raise ValueError("Expected one top-level source directory")
         # All paths and member types were validated above; compatible with 3.10.
         for member in members:
             target = destination.joinpath(*PurePosixPath(member.name).parts)
+            if not target.resolve().is_relative_to(destination.resolve()):
+                raise ValueError("Source destination escapes extraction directory")
             if member.isdir():
                 target.mkdir(parents=True, exist_ok=True)
             else:

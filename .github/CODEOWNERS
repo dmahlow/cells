@@ -1,0 +1,8 @@
+# Sole-owner review requests; add a second trusted maintainer for independent review.
+/.github/ @kborer
+/tools/release.py @kborer
+/tools/check_dist.py @kborer
+/release-policy.json @kborer
+/debian/ @kborer
+/pyproject.toml @kborer
+/requirements*.txt @kborer

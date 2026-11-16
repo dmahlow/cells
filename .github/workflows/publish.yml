@@ -1,5 +1,4 @@
 name: Publish
-
 on:
   workflow_dispatch:
     inputs:
@@ -9,93 +8,112 @@ on:
         options: [testpypi, pypi]
         default: testpypi
         required: true
-
+      candidate_run_id:
+        description: Successful TestPyPI Publish run to promote (required for PyPI)
+        type: string
+        required: false
 permissions:
   contents: read
-
+concurrency:
+  group: publish-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: false
 jobs:
-  release-ref:
+  selection:
     name: Validate release selection
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.selection.outputs.version }}
+      source_run: ${{ steps.selection.outputs.source_run }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
-          python-version: "3.14"
-      - name: Production releases require a matching version tag
-        id: version
+          python-version: '3.14'
+      - name: Validate tag, protected-main ancestry and promotion source
+        id: selection
         env:
-          RELEASE_TARGET: ${{ inputs.target }}
+          TARGET: ${{ inputs.target }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run_id }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           python - <<'PY'
-          import os
-          import cells
-          target = os.environ['RELEASE_TARGET']
+          import os, re, subprocess
+          from tools.release import version
+          target = os.environ['TARGET']
+          source = os.environ['GITHUB_RUN_ID']
           if target not in ('testpypi', 'pypi'):
-              raise SystemExit('Unsupported package index')
-          if target == 'pypi' and os.environ['GITHUB_REF'] != f'refs/tags/v{cells.__version__}':
-              raise SystemExit(f'Production publishing requires tag v{cells.__version__}')
-          print(f'Preparing {cells.__version__} for {target}')
+              raise SystemExit('Invalid index')
+          if target == 'pypi':
+              if os.environ['GITHUB_REF'] != f'refs/tags/v{version()}':
+                  raise SystemExit('Production publishing requires the matching version tag')
+              subprocess.run(['git', 'merge-base', '--is-ancestor', 'HEAD', 'origin/main'], check=True)
+              source = os.environ['CANDIDATE_RUN']
+              if not re.fullmatch(r'[0-9]+', source):
+                  raise SystemExit('Select the successful TestPyPI candidate run')
+              with open('candidate-run.json', 'w') as output:
+                  subprocess.run(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{source}'], stdout=output, check=True)
+              subprocess.run(['python', 'tools/release.py', 'candidate', 'candidate-run.json', '--commit', os.environ['GITHUB_SHA']], check=True)
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              output.write(f'version={cells.__version__}\n')
+              output.write(f'version={version()}\nsource_run={source}\n')
           PY
-
   verify:
-    needs: release-ref
+    if: inputs.target == 'testpypi'
+    needs: selection
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
-
+  ubuntu:
+    if: inputs.target == 'testpypi'
+    needs: selection
+    uses: ./.github/workflows/ubuntu.yml
+    permissions:
+      contents: read
   publish:
     name: Upload verified distributions
-    needs: [release-ref, verify]
+    needs: [selection, verify, ubuntu]
+    if: ${{ !cancelled() && needs.selection.result == 'success' && (inputs.target == 'pypi' || (needs.verify.result == 'success' && needs.ubuntu.result == 'success')) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment:
       name: ${{ inputs.target }}
     permissions:
+      contents: read
       actions: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: distributions
           path: dist/
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+          run-id: ${{ needs.selection.outputs.source_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
-          name: distribution-checksums
-          path: checksums/
-      - name: Verify exactly the tested archives before upload
-        run: |
-          python - <<'PY'
-          import hashlib
-          from pathlib import Path
-          directory = Path('dist')
-          entries = [line.split() for line in Path('checksums/SHA256SUMS').read_text().splitlines()]
-          names = [name for digest, name in entries]
-          if len(names) != 2 or len(set(names)) != 2 or set(names) != {p.name for p in directory.iterdir()}:
-              raise SystemExit('Expected exactly the verified wheel and source archive')
-          for digest, name in entries:
-              if Path(name).name != name or hashlib.sha256((directory / name).read_bytes()).hexdigest() != digest:
-                  raise SystemExit('Distribution checksum mismatch')
-          print('Verified both distribution checksums')
-          PY
-      - name: Publish using the configured Trusted Publisher
-        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
+          name: release-manifest
+          run-id: ${{ needs.selection.outputs.source_run }}
+          github-token: ${{ github.token }}
+      - name: Verify the candidate commit, version and every archive byte
+        run: python tools/release.py verify --commit "$GITHUB_SHA"
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086
         with:
           packages-dir: dist/
           repository-url: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: "3.14"
       - name: Install the published wheel in a fresh environment
         env:
-          RELEASE_VERSION: ${{ needs.release-ref.outputs.version }}
+          RELEASE_VERSION: ${{ needs.selection.outputs.version }}
           INDEX_URL: ${{ inputs.target == 'testpypi' && 'https://test.pypi.org/simple/' || 'https://pypi.org/simple/' }}
         run: |
           python - <<'PY'
@@ -126,3 +144,54 @@ jobs:
                   raise SystemExit('Published installation produced an invalid snapshot')
               print(f'Installed and exercised terminal-cells {version} from the selected index')
           PY
+  github-release:
+    name: Assemble and publish immutable GitHub release
+    if: inputs.target == 'pypi'
+    needs: [selection, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: distributions
+          path: dist/
+          run-id: ${{ needs.selection.outputs.source_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-manifest
+          run-id: ${{ needs.selection.outputs.source_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: ubuntu-*-packages
+          path: ubuntu/
+          run-id: ${{ needs.selection.outputs.source_run }}
+          github-token: ${{ github.token }}
+      - name: Assemble all assets before creating the release
+        run: |
+          python tools/release.py verify --commit "$GITHUB_SHA"
+          python tools/release.py assemble
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-path: release-assets/*
+      - name: Upload a draft, then publish it with all assets attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "cells ${RELEASE_TAG#v}" --notes-file release-notes.md
+          gh release upload "$RELEASE_TAG" release-assets/*
+          gh release edit "$RELEASE_TAG" --draft=false

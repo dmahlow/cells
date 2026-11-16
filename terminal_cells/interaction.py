@@ -235,8 +235,10 @@ def restore_mouse(curses, old_mask, old_interval):
 def read_click(curses):
     try:
         _, col, row, _, buttons = curses.getmouse()
+        if not all(isinstance(value, int) for value in (col, row, buttons)) or col < 0 or row < 0:
+            return None
         if buttons & (curses.BUTTON1_PRESSED | getattr(curses, "BUTTON1_CLICKED", 0)):
             return col, row
-    except (AttributeError, curses.error):
+    except (AttributeError, TypeError, ValueError, curses.error):
         pass
     return None

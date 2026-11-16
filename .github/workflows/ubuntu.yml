@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:
   workflow_dispatch:
     inputs:
       ppa_key_fingerprint:
@@ -38,20 +39,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build from the verified 0.1.0 upstream release
+      - name: Build the selected checkout with distro tools
         env:
           UBUNTU_SERIES: ${{ matrix.series }}
         run: |
-          mkdir -p /tmp/cells-deb
-          cd /tmp/cells-deb
-          curl --fail --location --retry 3 \
-            https://github.com/kborer/cells/releases/download/v0.1.0/terminal_cells-0.1.0.tar.gz \
-            -o terminal-cells_0.1.0.orig.tar.gz
-          echo 'b6ff320183c096f5126dca827143d0daed9d7613baaac54c147b2575645bcf46  terminal-cells_0.1.0.orig.tar.gz' | sha256sum --check
-          tar -xzf terminal-cells_0.1.0.orig.tar.gz
-          cp -a "$GITHUB_WORKSPACE/debian" terminal_cells-0.1.0/debian
-          cd terminal_cells-0.1.0
-          sed -i "1s/0.1.0-1) unstable/0.1.0-1~${UBUNTU_SERIES}1) ${UBUNTU_SERIES}/" debian/changelog
+          python3 tools/release.py deb-source --output /tmp/cells-deb --series "$UBUNTU_SERIES" > /tmp/cells-deb-tree
+          cd "$(cat /tmp/cells-deb-tree)"
           dpkg-buildpackage --no-sign -sa
       - name: Check package policy
         run: lintian --allow-root --fail-on error /tmp/cells-deb/*.changes
@@ -78,7 +71,7 @@ jobs:
           cp /tmp/cells-deb/*.deb /tmp/cells-deb/*.dsc /tmp/cells-deb/*.tar.* \
             /tmp/cells-deb/*.changes /tmp/cells-deb/*.buildinfo packages/
           cd packages
-          sha256sum * > SHA256SUMS
+          sha256sum -- * > SHA256SUMS
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -96,18 +89,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {ubuntu: '24.04', series: noble, version: '0.1.0-1ppa1~24.04.1'}
-          - {ubuntu: '26.04', series: resolute, version: '0.1.0-1ppa1~26.04.1'}
+          - {ubuntu: '24.04', series: noble}
+          - {ubuntu: '26.04', series: resolute}
     env:
       DEBIAN_FRONTEND: noninteractive
       PPA_KEY: ${{ inputs.ppa_key_fingerprint }}
       UBUNTU_SERIES: ${{ matrix.series }}
-      EXPECTED_VERSION: ${{ matrix.version }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Install apt verification tools
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl gnupg python3
+          apt-get install -y --no-install-recommends ca-certificates curl gnupg python3 git
       - name: Verify the PPA key and configure its apt source
         run: |
           case "$PPA_KEY" in
@@ -125,6 +120,16 @@ jobs:
             > /etc/apt/sources.list.d/cells.list
           find /etc/dpkg/dpkg.cfg.d -type f -exec \
             sed -i '\|^path-exclude[= ]*/usr/share/man/|d' {} +
+      - name: Resolve the expected package version
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from tools.release import version, policy
+          p = policy()
+          release = next(v for v,s in p['ubuntu'].items() if s == os.environ['UBUNTU_SERIES'])
+          with open(os.environ['GITHUB_ENV'], 'a') as out:
+              out.write(f"EXPECTED_VERSION={version()}-{p['ppa_revision']}~{release}.1\nUPSTREAM_VERSION={version()}\n")
+          PYTHON
       - name: Install and exercise the published PPA package
         run: |
           apt-get update
@@ -132,7 +137,7 @@ jobs:
           apt-get install -y "terminal-cells=$EXPECTED_VERSION"
           test "$(dpkg-query -W -f='${Version}' terminal-cells)" = "$EXPECTED_VERSION"
           cd /tmp
-          test "$(cells --version)" = 'cells 0.1.0'
+          test "$(cells --version)" = "cells $UPSTREAM_VERSION"
           cells --snapshot --seed 42 --size 80x24 > cells-snapshot
           python3 - <<'PYTHON'
           from pathlib import Path

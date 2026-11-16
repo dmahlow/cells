@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Harden archive validation and malformed mouse-event handling, add security
+  scanning, dependency audits, broader generated tests, coverage, and nightly
+  endurance checks.
+- Generate release manifests and distro versions, promote tested artifacts
+  unchanged, prepare reviewable release patches, and assemble complete releases
+  with provenance before immutable publication.
+- Document security reporting, production approval, PPA preparation, and recovery.
+
 - Add Debian-format packaging and Ubuntu 24.04/26.04 build and installation checks.
 
 ## 0.1.0 — 2026-11-16
