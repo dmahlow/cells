@@ -43,6 +43,7 @@ jobs:
         env:
           UBUNTU_SERIES: ${{ matrix.series }}
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           python3 tools/release.py deb-source --output /tmp/cells-deb --series "$UBUNTU_SERIES" > /tmp/cells-deb-tree
           cd "$(cat /tmp/cells-deb-tree)"
           dpkg-buildpackage --no-sign -sa
