@@ -1,7 +1,8 @@
 # Ubuntu packages
 
-Debian-format packaging lives in `debian/`. CI builds the released upstream
-0.1.0 source, verifies its SHA-256, and tests Ubuntu 24.04 and 26.04 separately.
+Debian-format packaging lives in `debian/`. CI builds the selected checkout and
+tests Ubuntu 24.04 and 26.04 separately. Release candidates retain these tested
+artifacts and their checksums for promotion without rebuilding.
 It uses distro build tools, runs the application test suite, checks the result
 with Lintian, then exercises installation, reinstallation, snapshot output,
 manual-page placement, and removal. This does not establish native Windows
