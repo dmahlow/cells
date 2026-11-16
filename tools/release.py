@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, datetime, timezone
+from email.utils import format_datetime
+import gzip
+import os
 import hashlib
 import json
 from pathlib import Path
@@ -56,13 +59,30 @@ def verify_manifest(directory, manifest, *, commit=None, expected_version=None):
             raise ValueError("Release checksum mismatch")
 
 
+def source_epoch():
+    value = os.environ.get("SOURCE_DATE_EPOCH")
+    if value is None:
+        value = (
+            subprocess.check_output(["git", "log", "-1", "--format=%ct"], cwd=ROOT).decode().strip()
+        )
+    if not value.isdecimal():
+        raise ValueError("Invalid source timestamp")
+    return int(value)
+
+
 def write_manifest(directory, commit):
     files = {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in directory.iterdir()
         if p.name.endswith((".whl", ".tar.gz"))
     }
-    manifest = {"version": version(), "commit": commit, "files": files, "policy": policy()}
+    manifest = {
+        "version": version(),
+        "commit": commit,
+        "files": files,
+        "policy": policy(),
+        "source_date_epoch": source_epoch(),
+    }
     verify_manifest(directory, manifest)
     (directory.parent / "release-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
@@ -117,11 +137,13 @@ def deb_source(output, series, upstream=None):
     tree = output / f"terminal-cells-{v}"
     if tree.exists() or orig.exists():
         raise ValueError("Use an empty output directory")
+    epoch = source_epoch()
     if upstream:
         from tools.check_dist import extract_source
 
         archive, manifest_path = upstream
         manifest = json.loads(manifest_path.read_text())
+        epoch = manifest["source_date_epoch"]
         verify_manifest(archive.parent, manifest, expected_version=v)
         if archive.name not in manifest["files"] or not archive.name.endswith(".tar.gz"):
             raise ValueError("Expected the manifest source archive")
@@ -131,10 +153,19 @@ def deb_source(output, series, upstream=None):
             shutil.copytree(source, tree)
     else:
         tracked = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode().split("\0")
-        with tarfile.open(orig, "w:gz") as archive:
-            for name in tracked:
+        with (
+            orig.open("wb") as raw,
+            gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=epoch) as compressed,
+            tarfile.open(fileobj=compressed, mode="w") as archive,
+        ):
+            for name in sorted(tracked):
                 if name and not name.startswith("debian/"):
-                    archive.add(ROOT / name, arcname=f"terminal-cells-{v}/{name}", recursive=False)
+                    info = archive.gettarinfo(
+                        str(ROOT / name), arcname=f"terminal-cells-{v}/{name}"
+                    )
+                    info.mtime, info.uid, info.gid, info.uname, info.gname = epoch, 0, 0, "", ""
+                    with (ROOT / name).open("rb") as payload:
+                        archive.addfile(info, payload)
         with tempfile.TemporaryDirectory() as temporary:
             from tools.check_dist import extract_source
 
@@ -151,7 +182,7 @@ def deb_source(output, series, upstream=None):
     (tree / "debian/changelog").write_text(
         f"terminal-cells ({v}-1~{series}1) {series}; urgency=medium\n\n"
         "  * Package the selected upstream release.\n\n"
-        " -- cells contributors <640862+kborer@users.noreply.github.com>  Mon, 16 Nov 2026 17:00:00 -0500\n"
+        f" -- cells contributors <640862+kborer@users.noreply.github.com>  {format_datetime(datetime.fromtimestamp(epoch, timezone.utc))}\n"
     )
     print(tree)
 
