@@ -27,7 +27,20 @@ def version(root=None):
 
 
 def policy():
-    return json.loads((ROOT / "release-policy.json").read_text())
+    config = json.loads((ROOT / "release-policy.json").read_text())
+    for field in ("repository", "ppa"):
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", config[field]):
+            raise ValueError("Invalid repository or PPA identity")
+    if config["distribution"] != "terminal-cells" or not re.fullmatch(
+        r"[1-9][0-9]*ppa[1-9][0-9]*", config["ppa_revision"]
+    ):
+        raise ValueError("Invalid distribution or PPA revision")
+    for release, series in config["ubuntu"].items():
+        if not re.fullmatch(r"[0-9]{2}\.[0-9]{2}", release) or not re.fullmatch(
+            r"[a-z][a-z0-9]+", series
+        ):
+            raise ValueError("Invalid Ubuntu release or series")
+    return config
 
 
 def safe_name(name):
@@ -102,10 +115,23 @@ def verify_candidate(run, repository, commit):
 
 
 def prepare(new_version):
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?", new_version):
-        raise ValueError("Use a three-part version, optionally followed by aN, bN or rcN")
-    if new_version == version():
-        raise ValueError("Version is already prepared")
+    def version_key(value):
+        match = re.fullmatch(
+            r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:(a|b|rc)([0-9]+))?", value
+        )
+        if not match:
+            raise ValueError("Use a three-part version, optionally followed by aN, bN or rcN")
+        major, minor, patch, stage, number = match.groups()
+        return (
+            int(major),
+            int(minor),
+            int(patch),
+            {"a": 0, "b": 1, "rc": 2, None: 3}[stage],
+            int(number or 0),
+        )
+
+    if version_key(new_version) <= version_key(version()):
+        raise ValueError("The next release version must increase")
     p = ROOT / "terminal_cells/__init__.py"
     p.write_text(
         re.sub(

@@ -129,7 +129,14 @@ class SecurityTests(unittest.TestCase):
             (root / "terminal_cells/__init__.py").write_text('__version__ = "0.1.0"\n')
             (root / "CHANGELOG.md").write_text("# Changelog\n\n## Unreleased\n\n- A fix.\n")
             with patch.object(release, "ROOT", root):
-                for value in ("../escape", "1.0.0;echo bad", "0.1.0"):
+                for value in (
+                    "../escape",
+                    "1.0.0;echo bad",
+                    "0.1.0",
+                    "0.0.1",
+                    "0.1.0rc1",
+                    "00.2.0",
+                ):
                     with self.assertRaises(ValueError):
                         release.prepare(value)
                 release.prepare("0.2.0")
