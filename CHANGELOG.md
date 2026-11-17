@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.1.1 — 2026-11-17
+
+- Refresh development tools and release provenance, clarify published installation
+  options, and add a real terminal recording and Homebrew formula preparation.
+
 - Harden archive validation and malformed mouse-event handling, add security
   scanning, dependency audits, broader generated tests, coverage, and nightly
   endurance checks.

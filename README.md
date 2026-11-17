@@ -17,28 +17,42 @@ Python 3.10+ on Linux or macOS, with the standard-library `curses` module. No
 third-party runtime dependencies. Some Linux distributions package curses
 separately. Native Windows is not currently supported; use WSL.
 
+Install the published [terminal-cells package on PyPI](https://pypi.org/project/terminal-cells/)
+as an isolated command-line app:
+
 ```sh
-./cells
-./cells --seed 42 --theme amber
-./cells --density 1.5 --speed 0.7 --ascii
-./cells --screensaver
+pipx install terminal-cells
+cells
+cells --interactive
 ```
 
-Or run `python3 cells.py`. To install this checkout as an isolated terminal app:
+On Ubuntu 24.04 or 26.04, use the maintained PPA:
 
 ```sh
-pipx install .
+sudo add-apt-repository ppa:bogobogosort/cells
+sudo apt update
+sudo apt install terminal-cells
 cells
 ```
 
-The distribution is named **terminal-cells**; its executable is **cells**.
-Install a published release with `pipx install terminal-cells`.
-You can also use `python3 -m pip install .` inside an active virtual
-environment. See [the release guide](docs/RELEASING.md) for publishing and
-Ubuntu publishing.
+The distribution is **terminal-cells**; the executable is **cells**. You can also
+use `python3 -m pip install terminal-cells` inside an active virtual environment.
+See [Ubuntu packages](docs/UBUNTU.md) for `.deb` downloads and source builds,
+[Homebrew packaging](docs/HOMEBREW.md) for tap preparation, and
+[the release guide](docs/RELEASING.md) for maintainers.
 
-Ubuntu 24.04/26.04 `.deb` downloads, PPA installation, and build instructions are
-in [the Ubuntu guide](docs/UBUNTU.md).
+To run a source checkout, use `./cells` or `python3 cells.py`, or install it with
+`pipx install .`.
+
+```sh
+cells --seed 42 --theme amber
+cells --density 1.5 --speed 0.7 --ascii
+cells --screensaver
+```
+
+[Replay the 12-second terminal recording](docs/demo.cast) with
+`asciinema play docs/demo.cast` after cloning this repository. The GIF above is
+rendered from simulation frames; the recording captures the actual curses app.
 
 Use a terminal at least **80×24**; **120×40 or larger** gives the detailed
 organisms room to move. Macrophages are roughly 31–35 columns wide and 16–18

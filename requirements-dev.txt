@@ -2,9 +2,9 @@
 build>=1.2
 setuptools>=77
 wheel>=0.45
-twine>=6
-Pillow>=11
-ruff==0.17.4
-hypothesis>=6.100
+twine>=7.0.0
+Pillow>=12.3.0
+ruff==0.17.5
+hypothesis>=6.168.5
 
-coverage>=7.6
+coverage>=7.16.2

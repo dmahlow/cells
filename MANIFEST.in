@@ -1,6 +1,6 @@
 include cells LICENSE README.md CHANGELOG.md CONTRIBUTING.md requirements-dev.txt requirements-build.txt SECURITY.md
 include .gitignore .gitattributes
-recursive-include docs *.md *.svg *.gif *.1
+recursive-include docs *.md *.svg *.gif *.cast *.1
 recursive-include tests *.py
 recursive-include tools *.py
 recursive-include .github *.yml *.md
