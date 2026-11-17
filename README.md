@@ -35,10 +35,17 @@ sudo apt install terminal-cells
 cells
 ```
 
+On macOS or Linux with Homebrew:
+
+```sh
+brew install kborer/cells/terminal-cells
+cells
+```
+
 The distribution is **terminal-cells**; the executable is **cells**. You can also
 use `python3 -m pip install terminal-cells` inside an active virtual environment.
 See [Ubuntu packages](docs/UBUNTU.md) for `.deb` downloads and source builds,
-[Homebrew packaging](docs/HOMEBREW.md) for tap preparation, and
+[Homebrew packaging](docs/HOMEBREW.md) for tap installation and maintenance, and
 [the release guide](docs/RELEASING.md) for maintainers.
 
 To run a source checkout, use `./cells` or `python3 cells.py`, or install it with
