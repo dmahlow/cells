@@ -61,6 +61,7 @@ jobs:
           apt-get install -y --reinstall /tmp/cells-deb/terminal-cells_*_all.deb
           sh -x debian/tests/smoke
           apt-get purge -y terminal-cells
+          hash -r
           if command -v cells; then
             echo 'cells executable survived package removal' >&2
             exit 1
@@ -149,4 +150,5 @@ jobs:
           PYTHON
           test -f /usr/share/man/man1/cells.1.gz
           apt-get purge -y terminal-cells
+          hash -r
           if command -v cells; then exit 1; fi
