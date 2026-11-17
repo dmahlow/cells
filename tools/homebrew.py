@@ -49,6 +49,7 @@ def main():
       from terminal_cells.cli import main
       main()
     PYTHON
+    chmod 0755, bin/"cells"
     man1.install "docs/cells.1"
   end
 
