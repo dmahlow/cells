@@ -57,6 +57,22 @@ Trusted publishers are configured separately on TestPyPI and PyPI with owner
 `kborer`, repository `cells`, workflow `publish.yml`, and matching environment
 `testpypi` or `pypi`. No upload password belongs in the repository.
 
+## Recover after an accepted upload
+
+An index can briefly lag an accepted upload. Fresh-index installation checks
+retry for a bounded period. If PyPI accepted a version but the later install
+check failed, inspect the index and compare its archive digests before retrying.
+Do not upload that version again or move its tag.
+
+Run **Complete published release** on `main` with the original version tag and
+successful TestPyPI candidate run ID. Its separate `github-release` approval gate
+protects publication. It requires protected-main ancestry, the matching staging
+commit and version, and exact PyPI filenames, metadata hashes, and downloaded
+archive bytes. It assembles the original tested assets with notes from the tag,
+attests them, and publishes a complete draft. It has no PyPI upload step.
+An existing public immutable release cannot be appended to; inspect an existing
+partial draft manually before attempting recovery.
+
 ## Ubuntu, other platforms, and recovery
 
 See [Ubuntu packaging and PPA instructions](UBUNTU.md) and

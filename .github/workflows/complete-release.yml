@@ -1,0 +1,104 @@
+name: Complete published release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag (for example v0.1.1)
+        type: string
+        required: true
+      candidate_run_id:
+        description: Successful TestPyPI Publish run for that exact tag
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: complete-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  complete:
+    name: Verify PyPI and complete GitHub publication
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: github-release
+    permissions:
+      contents: write
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.tag }}
+          path: source
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.14'
+      - name: Validate the tag, main ancestry, and successful staging candidate
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          CANDIDATE: ${{ inputs.candidate_run_id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          from tools.release import version, verify_candidate
+          tag, candidate = os.environ['RELEASE_TAG'], os.environ['CANDIDATE']
+          v = version(Path('source'))
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+(?:(?:a|b|rc)[0-9]+)?', tag) or tag != f'v{v}' or not candidate.isdecimal():
+              raise SystemExit('Invalid tag, version or candidate')
+          commit = subprocess.check_output(['git', '-C', 'source', 'rev-parse', 'HEAD'], text=True).strip()
+          tagged = subprocess.check_output(['git', 'rev-parse', f'refs/tags/{tag}^{{commit}}'], text=True).strip()
+          if commit != tagged:
+              raise SystemExit('Source checkout does not match the release tag')
+          subprocess.run(['git', 'merge-base', '--is-ancestor', commit, 'origin/main'], check=True)
+          run = json.loads(subprocess.check_output(['gh', 'api', f'repos/{os.environ["GITHUB_REPOSITORY"]}/actions/runs/{candidate}']))
+          verify_candidate(run, os.environ['GITHUB_REPOSITORY'], commit)
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f'RELEASE_COMMIT={commit}\nRELEASE_VERSION={v}\n')
+          PY
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: distributions
+          path: dist/
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: release-manifest
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          pattern: ubuntu-*-packages
+          path: ubuntu/
+          run-id: ${{ inputs.candidate_run_id }}
+          github-token: ${{ github.token }}
+      - name: Require the already-published PyPI archives to match every candidate byte
+        run: python tools/check_published.py --commit "$RELEASE_COMMIT" --version "$RELEASE_VERSION"
+      - name: Assemble assets and release notes from the tagged source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tools import release
+          release.ROOT = Path('source').resolve()
+          release.assemble()
+          PY
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8
+        with:
+          subject-path: release-assets/*
+      - name: Publish the complete immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          gh release create "$RELEASE_TAG" --verify-tag --draft --title "cells ${RELEASE_TAG#v}" --notes-file release-notes.md
+          gh release upload "$RELEASE_TAG" release-assets/*
+          gh release edit "$RELEASE_TAG" --draft=false

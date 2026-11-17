@@ -122,17 +122,14 @@ jobs:
           import subprocess
           import sys
           import tempfile
+          from tools.check_published import install_from_index
           with tempfile.TemporaryDirectory() as directory:
               root = Path(directory)
               environment = root / 'venv'
               subprocess.run([sys.executable, '-m', 'venv', str(environment)], check=True)
               python = environment / 'bin/python'
               version = os.environ['RELEASE_VERSION']
-              subprocess.run([
-                  str(python), '-m', 'pip', 'install', '--no-cache-dir', '--no-deps',
-                  '--only-binary=:all:', '--index-url', os.environ['INDEX_URL'],
-                  f'terminal-cells=={version}',
-              ], cwd=root, check=True)
+              install_from_index(python, version, os.environ['INDEX_URL'], root)
               command = str(environment / 'bin/cells')
               result = subprocess.check_output([command, '--version'], cwd=root, text=True)
               if result.strip() != f'cells {version}':
