@@ -220,8 +220,8 @@
 <text x="726" y="865" fill="#875faf">NET 97/5</text>
 <rect x="696" y="877" width="20" height="16" fill="#6c6c6c"/>
 <text x="726" y="890" fill="#6c6c6c">GLASS 242/0</text>
-<rect x="696" y="902" width="20" height="16" fill="#d0d0d0"/>
-<text x="726" y="915" fill="#d0d0d0">BACKGROUND_FAR 252/0</text>
-<rect x="696" y="927" width="20" height="16" fill="#949494"/>
-<text x="726" y="940" fill="#949494">BACKGROUND_NEAR 246/0</text>
+<rect x="696" y="902" width="20" height="16" fill="#b2b2b2"/>
+<text x="726" y="915" fill="#b2b2b2">BACKGROUND_FAR 249/0</text>
+<rect x="696" y="927" width="20" height="16" fill="#8a8a8a"/>
+<text x="726" y="940" fill="#8a8a8a">BACKGROUND_NEAR 245/0</text>
 </g></svg>
